@@ -1,0 +1,7 @@
+{
+    "sketch": "master_reader.ino",
+    "port": "COM4",
+    "board": "arduino:avr:nano",
+    "programmer": "avrispmkii",
+    "configuration": "cpu=atmega328"
+}

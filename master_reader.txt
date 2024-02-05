@@ -1,0 +1,54 @@
+#define B 3950 // B-коэффициент
+#define SERIAL_R 100000 // сопротивление последовательного резистора, 102 кОм
+#define THERMISTOR_R 100000 // номинальное сопротивления термистора, 100 кОм
+#define NOMINAL_T 25 // номинальная температура (при которой TR = 100 кОм)
+
+const byte tempPin = A0;
+float volt_to_temp(int t){
+    float tr = 1023.0 / t - 1;
+    tr = SERIAL_R / tr;
+    float steinhart=0;
+    steinhart = tr / THERMISTOR_R; // (R/Ro)
+    steinhart = log(steinhart); // ln(R/Ro)
+    steinhart /= B; // 1/B * ln(R/Ro)
+    steinhart += 1.0 / (NOMINAL_T + 273.15); // + (1/To)
+    steinhart = 1.0 / steinhart; // Invert
+    steinhart -= 273.15; 
+    return (steinhart);
+}
+
+void setup() {
+    Serial.begin( 9600 );
+    pinMode( A0, INPUT );
+    pinMode( A1, INPUT );
+    pinMode(A5,INPUT);
+    pinMode(10,OUTPUT);
+    pinMode(8,OUTPUT);
+    digitalWrite(8,HIGH);
+    
+}
+
+void loop() {
+    int t = analogRead(A0);
+    
+    /*Сделать чтение земли что бы не было корреляции между соседними измерениями и датчиками*/
+    
+    Serial.print("t_1=");
+    Serial.println(volt_to_temp(t),2);
+    // t=analogRead(A1);
+    // int t2= analogRead(A3);
+    // Serial.print("t_2=");
+    // Serial.println(volt_to_temp(t2),2);
+    int t3= analogRead(A5);
+    Serial.print("t_3=");
+    Serial.println(volt_to_temp(t3),2);
+    if (volt_to_temp(t3)<35){
+        digitalWrite(10,HIGH);
+    
+    }else{
+        digitalWrite(10,LOW);
+    }
+    
+ 
+    delay(500);
+}
