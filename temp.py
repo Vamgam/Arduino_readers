@@ -4,28 +4,72 @@ import pandas as pd
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-ser = serial.Serial('COM5', 9600)
+from time import sleep
+ser = serial.Serial('COM6', 9600)
+sleep(6)
+
+ser.write(b'1')
+
+
 length=0
 plt.ion()
 data_ar1=[]
 data_ar2=[]
-x=np.linspace(0,len(data_ar1),num=len(data_ar1))
+data_ar3=[]
+file = open("exp_name.txt", "w")
+first=time.time()
 
 
-graph = plt.plot(x,data_ar1)[0]
+
+x1=np.linspace(0,len(data_ar1),num=len(data_ar1))
+        
+graph1 = plt.plot(x1,data_ar1,label='Планшет')[0]
+x2=np.linspace(0,len(data_ar2),num=len(data_ar2))
+        
+graph2 = plt.plot(x2,data_ar2,label='Столки')[0]
+x3=np.linspace(0,len(data_ar3),num=len(data_ar3))
+graph3 = plt.plot(x3,data_ar3,label='Крышка')[0]
+
+data_mean=[]
 plt.grid()
 plt.axhline(y=40)
+plt.axhline(y=30)
+plt.axhline(y=35)
+plt.xlabel('Time')
+plt.ylabel("T,^\circ C")
 plt.pause(0.25)
+sleep(5)
+
 while len(data_ar1)<5600:
     data = ser.readline().decode('ascii')
+    print(data)
     if 'PLN' in data:
-        print(data)
-        data_ar1.append(float(data[4:]))
-        graph.remove()
-        x=np.linspace(0,len(data_ar1),num=len(data_ar1))
+        data_ar1.append(float(data[4:9]))
+    if 'TBL' in data and len(data_ar2)<5:
+        data_ar2.append(float(data[14:18]))
+    elif 'TBL' in data:
+        data_ar2.append(float(data[14:19]))
+    if 'CRS' in data and  len(data_ar2)<5:
+        data_ar3.append(float(data[23:28]))
+    elif 'CRS' in data:
+        data_ar3.append(float(data[24:29]))
+    
+    graph1.remove()
+    graph2.remove()
+    graph3.remove()
+    
+    x2=np.linspace(0,len(data_ar2),num=len(data_ar2))
         
-        graph = plt.plot(x,data_ar1)[0]
-        plt.axhline(y=30)
-        plt.grid()
-        plt.pause(0.25)
+    graph2 = plt.plot(x2,data_ar2,color='blue',label='Столки')[0]
+    x3=np.linspace(0,len(data_ar3),num=len(data_ar3))
+        
+    graph3 = plt.plot(x3,data_ar3,color='green',label='Крышка')[0]
+    x1=np.linspace(0,len(data_ar1),num=len(data_ar1))
+        
+    graph1 = plt.plot(x1,data_ar1,color='red',label='Планшет')[0]
+    plt.legend()
+
+    
+    
+    plt.pause(0.25)
         
