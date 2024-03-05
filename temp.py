@@ -5,7 +5,7 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from time import sleep
-ser = serial.Serial('COM6', 9600)
+ser = serial.Serial('COM5', 9600)
 sleep(6)
 
 ser.write(b'1')
@@ -42,17 +42,20 @@ sleep(5)
 
 while len(data_ar1)<5600:
     data = ser.readline().decode('ascii')
+    second=time.time()
     print(data)
-    if 'PLN' in data:
-        data_ar1.append(float(data[4:9]))
-    if 'TBL' in data and len(data_ar2)<5:
-        data_ar2.append(float(data[14:18]))
-    elif 'TBL' in data:
-        data_ar2.append(float(data[14:19]))
-    if 'CRS' in data and  len(data_ar2)<5:
-        data_ar3.append(float(data[23:28]))
-    elif 'CRS' in data:
-        data_ar3.append(float(data[24:29]))
+    if 'plate2' in data:
+        st=data.find('plate2')
+        data_ar1.append(float(data[st+7:st+13]))
+    if 'table' in data:
+        st =data.find('table')
+        data_ar2.append(float(data[st+6:st+12]))
+    if 'lid2' in data :
+        st=data.find('lid2')
+        data_ar3.append(float(data[st+5:st+11]))
+    
+    
+    
     
     graph1.remove()
     graph2.remove()
@@ -72,4 +75,6 @@ while len(data_ar1)<5600:
     
     
     plt.pause(0.25)
+file.close()
+plt.savefig(str(time.ctime(second))+'.png')
         
