@@ -2,25 +2,28 @@
 import matplotlib.pyplot as plt
 from numpy import linspace
 from serial import Serial
-
 from time import sleep
-from time import time,ctime
-import serial.tools.list_ports
+from datetime import datetime
+#import serial.tools.list_ports
+from tkinter import Tk
+from tkinter.filedialog import askdirectory
+import os
+import numpy as np
 
+root = Tk()
+path = askdirectory(title='Select Folder') # shows dialog box and return the path
+root.destroy()
 
+file_index = 0
+filename = os.path.join(path, "temp_curve")
+while os.path.exists(f"{filename}{file_index}.txt"):
+    file_index += 1
+file = open(f"{filename}{file_index}.txt", "w")
 
-
-ports=serial.tools.list_ports.comports()
 c=str(int(input("С какой температуры вы хотите начать:"))-1)
-port=0
-for i in ports:
-    if "CH340" in i[1]:
-        port=i[0]
-        break
-if port==0:
-    raise IOError("Arduino not found")
+#c = "0"
 
-ser = Serial(port, 9600)
+ser = Serial("COM5", 9600)
 sleep(6)
 
 ser.write(bytes(c,"utf-8"))
@@ -28,69 +31,78 @@ ser.write(bytes(c,"utf-8"))
 
 length=0
 plt.ion()
-data_ar1=[]
-data_ar2=[]
-data_ar3=[]
-file = open("exp_name.txt", "w")
+plate_temp,lid_temp, table_temp, plate_state, lid_state =[], [], [], [], []
 
 
+time_min=linspace(0,len(plate_temp),num=len(plate_temp))*0.5/60
 
 
-x1=linspace(0,len(data_ar1),num=len(data_ar1))
+fig = plt.figure()
+ax = plt.gca()
+#ax2 = ax.twinx()
 
-graph1 = plt.plot(x1,data_ar1,label='Планшет')[0]
-x2=linspace(0,len(data_ar2),num=len(data_ar2))
+graph_plate = ax.plot(time_min, plate_temp, label=f'Планшет', c = 'r')[0]
+graph_table = ax.plot(time_min, table_temp, label='Столики', c = 'g')[0]
+graph_lid = ax.plot(time_min, lid_temp, label='Крышка', c = 'b')[0]
 
-graph2 = plt.plot(x2,data_ar2,label='Столки')[0]
-x3=linspace(0,len(data_ar3),num=len(data_ar3))
-graph3 = plt.plot(x3,data_ar3,label='Крышка')[0]
-
-
+# graph_plate_state = ax.plot(time_min, plate_state, '--k', label = 'plate_state')[0]
+# graph_lid_state = ax.plot(time_min, lid_state, '--m', label = 'lid_state')[0]
 plt.grid()
-plt.axhline(y=40)
-plt.axhline(y=30)
-plt.axhline(y=35)
-plt.xlabel('Time')
-plt.ylabel("T,^\circ C")
+plt.xlabel('Time, min')
+plt.ylabel("$T,^\circ C$")
 plt.pause(0.25)
 sleep(5)
 try:
     for i in range(4):
         data = ser.readline().decode('ascii')
         print(data)
-    while len(data_ar1)<5600:
+    while True:
         data = ser.readline().decode('ascii')
+        if data == 'termination':
+            break
         print(data)
-        if 'PLN' in data:
-            st=data.find('PLN')
-            data_ar1.append(float(data[st+4:st+9]))
-        if 'TBL' in data:
-            st=data.find("TBL")
-            data_ar2.append(float(data[st+4:st+9]))
-        if 'CRS' in data:
-            st=data.find('CRS')
-            data_ar3.append(float(data[st+4:st+9]))
-        file.write(str(ctime(time())).split(' ')[3]+' '+str(data_ar1[-1])+'\n')
+        data_list = {item.split("=")[0]:float(item.split("=")[1]) for item in data.split(";")}
 
-        graph1.remove()
-        graph2.remove()
-        graph3.remove()
+        plate_state.append(data_list['plate_state'])
+        lid_state.append(data_list['lid_state'] + 0.05)
+        plate_temp.append(data_list['plate'])
+        lid_temp.append(data_list['lid'])
+        table_temp.append(data_list['table'])
 
-        x2=linspace(0,len(data_ar2),num=len(data_ar2))
+        
+        time_min=linspace(0,len(plate_temp),num=len(plate_temp))*0.5/60
 
-        graph2 = plt.plot(x2,data_ar2,color='blue',label='Столки')[0]
-        x3=linspace(0,len(data_ar3),num=len(data_ar3))
+        graph_plate.set_xdata(time_min)
+        graph_plate.set_ydata(plate_temp)
 
-        graph3 = plt.plot(x3,data_ar3,color='green',label='Крышка')[0]
-        x1=linspace(0,len(data_ar1),num=len(data_ar1))
+        graph_lid.set_xdata(time_min)
+        graph_lid.set_ydata(lid_temp)
 
-        graph1 = plt.plot(x1,data_ar1,color='red',label='Планшет')[0]
-        plt.legend()
+        graph_table.set_xdata(time_min)
+        graph_table.set_ydata(table_temp)
+
+        # graph_plate_state.set_xdata(time_min)
+        # graph_plate_state.set_ydata(plate_state)
+
+        # graph_lid_state.set_xdata(time_min)
+        # graph_lid_state.set_ydata(lid_state)
+
+        ax.relim()
+        ax.autoscale_view()
+        # ax2.relim()
+        # ax2.autoscale_view()
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+
+        file.write(f"{datetime.now().strftime('%H:%M:%S')},{plate_temp[-1]} \n")
+        #ax2.legend(loc = "lower right")
+        ax.legend(loc = "lower left")
         plt.pause(0.25)
+
 
 finally :
     file.close()
-    plt.savefig(str(ctime(time()).split(' ')[:3])+'.png')
+    plt.savefig(f"{filename}{file_index}.png")
  
 
     

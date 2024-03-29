@@ -7,26 +7,33 @@
 #define R0 1000 // Номинальное сопротивление термистора
 #define alpha 3850 //alpha-коэффициент dtc 
 
+float T_plate = 0;
+float T_lid = 0;
+float T_table = 0;
+
+int plate_last_val = 0;
+int lid_last_val = 0;
+int table_last_val = 0;
+
 //Блок режимов работы
 boolean cold_start=false;
 boolean cool=true;
 boolean control=false;
 boolean start =false;
-int set[] ={25,30,35,40};// Установленная температура
-int cr_temp[]={23,30,40,45}; // температура поддержания крышки
-int t_stol[]={23,28,30,35}; // температура поддержания стола
-int i=0; // С какого шага начинается программа
+boolean end_flag = false;
+boolean lid_state = false;
+boolean plate_state = false;
 
-// Блок инициаиции скользящего среднего для крышки и стола
-const int numReadings = 10;
-int count=0;
-float readings[numReadings];
-float readings_cr[numReadings];  // массив для хранения значений полученных на аналоговом входе 
-int readIndex = 0;          // индекс последнего значения
-float total = 0;   
-float total1 = 0;           // сумма значений
-float average = 0;
-float average1 =0 ;            // скользящее среднее
+int table_pin = 2;
+int lid_pin = 8;
+
+
+int time_interval = 600;// Времени на каждую температурную точку в секундах
+int set[] ={27,29,31,33,35,37,39};// Установленная температура
+int cr_temp[]={30,32,34,36,38,40,42}; // температура поддержания крышки
+int t_stol[]={27,29,31,33,35,37,39}; // температура поддержания стола
+int temp_index=0; // С какого шага начинается программа
+
 
 // Функция перевода напрядения для негативного термистора
 float volt_to_temp_ntc(int t){
@@ -51,84 +58,86 @@ float volt_to_temp_dtc(int phi){
   temp/=R0;
   return temp;
 }
-//скользящее среднее
-float move_average(float temp1,float temp2){
-    total = total - readings[readIndex];
-    total1=total1-readings_cr[readIndex];
-    readings[readIndex] = temp1;
-    readings_cr[readIndex]=temp2;
-
-  // добавляем значение к сумме
-    total = total + readings[readIndex];
-    total1=total1+readings_cr[readIndex];
-  // переставляем индекс на следующую позицию
-    readIndex = readIndex + 1;
-  // проверяем если мы выскочили индексом за пределы массива
-    if (readIndex >= numReadings) {
-    // если да, то индекс на ноль
-        readIndex = 0;
-    }
-  // считаем среднее:
-    average = total / numReadings;
-    average1=total1/numReadings;
 
 
+uint16_t lowpass_filtr_u16(int input , int *last , int Num){ // Yn = 1/8 Xn + 7/8 Yn-1  ;  FILTR_BITS 3  ->  1/8
+
+    if( Num == 0 ){ return input; }
+    if( Num > 15 ){ Num = 15; }
+
+    *last -=((*last) >> Num);   // 7/8 Yn-1
+    *last += (uint32_t)(input); // 1/8 Xn
+
+    return (uint16_t)((*last) >> Num);
 }
-//Контроль режимов работы и температуры столика и крышки с учётом температуры стола
-bool contorl_of_regimes(float temp3){
-  if (average1<cr_temp[i]){
-      digitalWrite(8,LOW);
+
+
+
+void contorl_of_regimes(){
+  if (T_lid<cr_temp[temp_index]+5){
+      lid_state = true;
+      digitalWrite(lid_pin,LOW);
     }
     else{
-      digitalWrite(8,HIGH);
+      lid_state = false;
+      digitalWrite(lid_pin,HIGH);
     }
   if (cold_start){
+        plate_state = true;
         digitalWrite(2,HIGH);
-        // digitalWrite(8,HIGH);
     }else if (cool){
-        digitalWrite(2,LOW);
-        // digitalWrite(8,LOW);
+        plate_state = false;
+        digitalWrite(table_pin,LOW);
     }else if (control){
-        digitalWrite(2,HIGH);
-        // digitalWrite(8,HIGH);
+        plate_state = true;
+        digitalWrite(table_pin,HIGH);
     }else{
-        digitalWrite(2,LOW);
-        // digitalWrite(8,LOW);
+        plate_state = false;
+        digitalWrite(table_pin,LOW);
     }
-  if (average>(2*set[i]-25) and cold_start){
+
+  if (T_table>(set[temp_index]+3) and cold_start){
         cold_start=false;
         cool=true;
-    }else if (cool and average<t_stol[i]){
+    }else if (cool and T_table<t_stol[temp_index]){
         cool=false;
         control=true;
-    }else if ( temp3<t_stol[i] and !cold_start and !cool){
+    }else if (T_plate<t_stol[temp_index]-1 and !cold_start and !cool){
         control=true;
     }else {
         control=false;
     }
 }
-// Таймер на время
-bool time_count(){
+
+void time_count(){
   uint32_t sec = millis() / 1000ul;
   
-  if ((sec%1800==0) and sec>1){
-      i+=1;
+  if ((sec>=time_interval*(temp_index+1)) && (!end_flag)){
+    if (temp_index==4){
+      end_flag = true;
+      cold_start=false;
+      cool=true;
+      control =false;
+    }
+    else{
+      temp_index+=1;
       cold_start=true;
       cool=false;
-      control=false;
+      control=false;}
   }
+  
 }
-///  Начало программы
+
 uint8_t analog_pins[] = {A2,A5,A3,A6};
 bool pins[]={true,true,true,true};
 void setup() {
-  for (int i = 0; i < 4; i++) { //or i <= 4
-      int k =volt_to_temp_ntc(analog_pins[i]);
-      if (k<0){
-        pins[i]=false;
+  // for (int i = 0; i < 4; i++) { //or i <= 4
+  //     int k =volt_to_temp_ntc(analog_pins[i]);
+  //     if (k<0){
+  //       pins[i]=false;
 
-      }
-}
+  //     }
+//}
     Serial.begin( 9600 );
     for (int i=0;i<4;i++){
       if (pins[i]){
@@ -139,41 +148,27 @@ void setup() {
       }
     }
     pinMode(A7,INPUT);
-    pinMode(2,OUTPUT);
-    pinMode(8,OUTPUT);
-    for (int thisReading = 0; thisReading < numReadings; thisReading++) {
-    readings[thisReading] = 0;
-    readings_cr[thisReading]=0;
-  }
+    pinMode(lid_pin,OUTPUT);
+    pinMode(table_pin,OUTPUT);
+    digitalWrite(lid_pin, HIGH);
+    digitalWrite(table_pin, LOW);
+
+    for (int j = 0; j <20; j++){
+      lowpass_filtr_u16(analogRead(A5), &plate_last_val, 2);
+      lowpass_filtr_u16(analogRead(A6), &lid_last_val, 2);
+      lowpass_filtr_u16(analogRead(A7), &table_last_val, 2);
+    }
+
 // Ожидание команды для старта
   while (!start){  
     if (Serial.available()>0){
-      char incomingCharacter = Serial.read();
-      switch (incomingCharacter) {
-        case '1':
-        start=true;
-        i=1;
-        cold_start=true;
-        cool=false;
-        break;
-        case '0':
-        start=true;
-        i=0;
-        break;
-        case '2':
-        start=true;
-        i=2;
-        break;
-        case '3':
-        start=true;
-        i=3;
-        break;
-  
-      }
+      temp_index = Serial.parseInt();
+      start=true;
+      cold_start=true;
+      cool=false;
+
     }
     }
-    
-    
     
   }
   
@@ -181,29 +176,31 @@ void setup() {
   
 // Главный цикл программы
 void loop() {
-                                // ЗАДЕРЖКА. Без неё работает некорректно!
+
+    if (!end_flag){
     
+    T_plate = volt_to_temp_ntc(lowpass_filtr_u16(analogRead(A5), &plate_last_val, 2));
+    T_lid = volt_to_temp_ntc(lowpass_filtr_u16(analogRead(A6), &lid_last_val, 2));
+    T_table = volt_to_temp_ntc(lowpass_filtr_u16(analogRead(A7), &table_last_val, 2));
     
-    float T_plansh =volt_to_temp_ntc(analogRead(A5));
-    analogRead(A1);
-    float T_stol= volt_to_temp_ntc(analogRead(A7));
-    float T_cryshka=volt_to_temp_ntc(analogRead(A6));
-    
-    Serial.print("PLN=");
-    Serial.print(T_plansh,2);
-    Serial.print(" TBL=");
-    Serial.print(average,2);
-    Serial.print(" CRS=");
-    Serial.print(average1,2);
-    Serial.print(" ");
-    Serial.print(cold_start);
-    Serial.print(cool);
-    Serial.print(control);
-    Serial.print(" ");
-    Serial.println(set[i]);
+    Serial.print("plate=");
+    Serial.print(T_plate,2);
+    Serial.print(";table=");
+    Serial.print(T_table,2);
+    Serial.print(";lid=");
+    Serial.print(T_lid,2);
+    Serial.print(";plate_state=");
+    Serial.print(plate_state);
+    Serial.print(";lid_state=");
+    Serial.print(lid_state);
+    Serial.print(";set_temp=");
+    Serial.println(set[temp_index]);
 
 
-    move_average(T_stol,T_cryshka);
-    contorl_of_regimes(T_plansh);
+    contorl_of_regimes();
     time_count();
-    delay(500);}
+    }else{
+    Serial.println('termination');
+    }
+    delay(500);
+  }
